@@ -3,61 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Excel手書き入力アプリ</title>
+    <title>高機能版・Excel手書き入力アプリ</title>
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- SheetJS -->
-    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <!-- Phosphor Icons (for UI) -->
+    <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     
+    <!-- Luckysheet & LuckyExcel (本格的なExcel表示用) -->
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet@2.8.1/dist/plugins/css/pluginsCss.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet@2.8.1/dist/plugins/plugins.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet@2.8.1/dist/css/luckysheet.css' />
+    <link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/luckysheet@2.8.1/dist/assets/iconfont/iconfont.css' />
+    <script src="https://cdn.jsdelivr.net/npm/luckysheet@2.8.1/dist/plugins/js/plugin.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luckysheet@2.8.1/dist/luckysheet.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luckyexcel@1.0.1/dist/luckyexcel.umd.js"></script>
+
+    <!-- ExcelJS & FileSaver (Excel書き出し用) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
     <style>
-        body { font-family: 'Inter', sans-serif; }
+        body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; overflow: hidden; }
         
-        /* Table Styles for iPad Optimization */
-        .excel-table {
-            border-collapse: collapse;
-            width: max-content;
-            min-width: 100%;
-        }
-        .excel-table th, .excel-table td {
-            border: 1px solid #d1d5db;
-            padding: 1.25rem 1.5rem; /* iPad向けパディング */
-            min-height: 64px; /* iPad向け最小高さ */
-            height: 64px;
-            font-size: 1.125rem; /* text-lg相当 */
-            text-align: left;
-            position: relative;
-            background-color: #ffffff;
-            transition: background-color 0.2s;
-        }
-        .excel-table th {
-            background-color: #f3f4f6;
-            font-weight: 600;
-            color: #374151;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-        .excel-table td {
-            cursor: pointer;
-        }
-        .excel-table td:hover {
-            background-color: #fef08a; /* ホバー時にハイライト */
+        /* Luckysheetを画面いっぱいに広げる */
+        #luckysheet-container {
+            position: absolute;
+            top: 72px; /* ヘッダーの高さ分下げる */
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
         }
 
-        /* Canvas Styles */
+        /* Canvas Styles (iPadスクロール防止) */
         #drawingCanvas {
             background-color: #ffffff;
             border: 2px solid #e5e7eb;
             border-radius: 0.5rem;
             cursor: crosshair;
-            touch-action: none; /* iPadでのスクロールを防止 */
+            touch-action: none;
             width: 100%;
             height: 300px;
         }
 
-        /* Loading Spinner */
         .spinner {
             border: 3px solid rgba(255, 255, 255, 0.3);
             border-radius: 50%;
@@ -70,248 +59,318 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        /* 独自ステータスバー（alertの代わり） */
+        #custom-alert {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 9999;
+            transition: opacity 0.3s ease;
+        }
     </style>
 </head>
-<body class="bg-gray-100 h-screen flex flex-col overflow-hidden text-gray-800">
+<body class="bg-gray-100 flex flex-col h-screen">
 
     <!-- Header Controls -->
-    <header class="bg-white shadow-sm py-4 px-6 z-20 flex flex-wrap gap-4 items-center justify-between shrink-0">
+    <header class="bg-white shadow-md h-[72px] px-4 z-20 flex items-center justify-between shrink-0 absolute top-0 w-full">
         <div class="flex items-center gap-3">
-            <div class="bg-green-100 p-2 rounded-lg text-green-600">
+            <div class="bg-green-100 p-2 rounded-lg text-green-700">
                 <i class="ph ph-file-xls text-2xl"></i>
             </div>
-            <h1 class="text-xl font-bold text-gray-800">手書きExcel入力</h1>
+            <h1 class="text-lg font-bold text-gray-800 hidden sm:block">Excel手書きアプリ</h1>
         </div>
 
-        <div class="flex flex-wrap items-center gap-4">
-            <!-- API Key Input -->
-            <div class="flex items-center bg-gray-50 border border-gray-300 rounded-lg px-3 py-2">
-                <i class="ph ph-key text-gray-500 mr-2"></i>
-                <input type="password" id="apiKeyInput" placeholder="Gemini APIキー (任意)" class="bg-transparent border-none outline-none text-sm w-48 placeholder-gray-400">
-            </div>
-
+        <div class="flex items-center gap-2 sm:gap-4">
             <!-- File Upload -->
             <div>
-                <input type="file" id="fileInput" accept=".xlsx, .xls" class="hidden" />
-                <label for="fileInput" class="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
-                    <i class="ph ph-upload-simple"></i>
-                    Excelを開く
+                <input type="file" id="fileInput" accept=".xlsx" class="hidden" />
+                <label for="fileInput" class="cursor-pointer bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-2 px-3 sm:px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors text-sm sm:text-base">
+                    <i class="ph ph-folder-open text-lg"></i>
+                    <span class="hidden sm:inline">開く</span>
                 </label>
             </div>
 
+            <!-- Handwrite Button (Manual Trigger) -->
+            <button id="triggerHandwriteBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-3 sm:px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors text-sm sm:text-base">
+                <i class="ph ph-pencil-simple-line text-lg"></i>
+                手書き入力
+            </button>
+
             <!-- Export Button -->
-            <button id="exportBtn" disabled class="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors">
-                <i class="ph ph-download-simple"></i>
-                Excelとして保存
+            <button id="exportBtn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-3 sm:px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors text-sm sm:text-base">
+                <i class="ph ph-download-simple text-lg"></i>
+                <span class="hidden sm:inline">保存</span>
             </button>
         </div>
     </header>
 
-    <!-- Main Content Area -->
-    <main class="flex-grow overflow-auto p-6 relative">
-        <div id="statusMessage" class="mb-4 p-4 rounded-lg bg-blue-50 text-blue-800 border border-blue-200 flex items-center gap-3">
-            <i class="ph ph-info text-xl"></i>
-            <span id="statusText">Excelファイルをアップロードしてください。</span>
-        </div>
+    <!-- Alert / Toast Message -->
+    <div id="custom-alert" class="hidden shadow-lg rounded-lg px-6 py-3 font-medium text-white flex items-center gap-2">
+        <i class="ph ph-info text-xl" id="alert-icon"></i>
+        <span id="alert-text"></span>
+    </div>
 
-        <div class="bg-white rounded-lg shadow-sm overflow-auto max-h-full border border-gray-200">
-            <table id="excelTable" class="excel-table hidden">
-                <thead id="excelThead"></thead>
-                <tbody id="excelTbody"></tbody>
-            </table>
-        </div>
-    </main>
+    <!-- Luckysheet Container -->
+    <div id="luckysheet-container">
+        <!-- Luckysheet renders here -->
+        <div id="luckysheet" style="margin:0px;padding:0px;position:absolute;width:100%;height:100%;left: 0px;top: 0px;"></div>
+    </div>
 
     <!-- Handwriting Modal -->
-    <div id="handwritingModal" class="fixed inset-0 bg-gray-900/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
-        <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-3xl flex flex-col gap-4">
+    <div id="handwritingModal" class="fixed inset-0 bg-gray-900/70 backdrop-blur-sm hidden items-center justify-center z-[9999] p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-5 w-full max-w-2xl flex flex-col gap-3">
             
-            <div class="flex justify-between items-center">
+            <div class="flex justify-between items-center border-b pb-2">
                 <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
-                    <i class="ph ph-pencil-line"></i> セルへ手書き入力
+                    <i class="ph ph-pencil-line text-blue-600"></i> 手書きでセルに入力
                 </h2>
+                <button id="closeModalIconBtn" class="text-gray-400 hover:text-gray-700 text-2xl">
+                    <i class="ph ph-x"></i>
+                </button>
             </div>
             
-            <p class="text-sm text-gray-500">枠内に文字を書き、「認識する」をタップしてください。</p>
-            <p id="modalError" class="text-sm text-red-600 hidden bg-red-50 p-2 rounded"></p>
+            <div class="flex justify-between items-center text-sm text-gray-600">
+                <span id="targetCellInfo" class="font-medium bg-gray-100 px-2 py-1 rounded">対象セル: 未選択</span>
+                <span>枠内に文字を書き、「認識する」をタップしてください。</span>
+            </div>
 
             <!-- Canvas Container -->
-            <div class="w-full bg-gray-50 rounded-lg p-2 border border-gray-200">
+            <div class="w-full bg-gray-50 rounded-lg p-1 border-2 border-gray-200">
                 <canvas id="drawingCanvas"></canvas>
             </div>
 
             <!-- Actions -->
-            <div class="flex flex-col sm:flex-row justify-between items-center gap-3 mt-4">
-                <button id="clearBtn" class="w-full sm:w-auto text-gray-600 hover:text-red-600 font-medium py-3 px-6 rounded-lg border border-gray-300 hover:bg-red-50 transition-colors flex items-center justify-center gap-2 text-lg bg-white">
-                    <i class="ph ph-eraser"></i> クリア
+            <div class="flex justify-between items-center mt-2">
+                <button id="clearBtn" class="text-gray-600 hover:text-red-600 font-medium py-3 px-5 rounded-lg border border-gray-300 hover:bg-red-50 transition-colors flex items-center gap-2 bg-white">
+                    <i class="ph ph-eraser text-lg"></i> クリア
                 </button>
                 
-                <div class="flex gap-3 w-full sm:w-auto">
-                    <button id="cancelBtn" class="w-full sm:w-auto bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-3 px-6 rounded-lg transition-colors text-lg">
-                        キャンセル
-                    </button>
-                    <button id="recognizeBtn" class="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-8 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm min-w-[160px] text-lg">
-                        <span id="recognizeBtnText">認識する</span>
-                        <div id="recognizeSpinner" class="spinner hidden"></div>
-                    </button>
-                </div>
+                <button id="recognizeBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-lg transition-colors flex items-center gap-2 shadow-md">
+                    <span id="recognizeBtnText">テキストに変換・入力</span>
+                    <div id="recognizeSpinner" class="spinner hidden"></div>
+                </button>
             </div>
         </div>
     </div>
 
     <script>
+        // --- Configuration ---
+        // 指定されたAPIキーをハードコード
+        const GEMINI_API_KEY = "AQ.Ab8RN6IB9ToE1XKqIGbP14g4IF6bFTmcLJ061v24CXYnXfhOdA"; 
+
         document.addEventListener('DOMContentLoaded', () => {
             // DOM Elements
             const fileInput = document.getElementById('fileInput');
             const exportBtn = document.getElementById('exportBtn');
-            const apiKeyInput = document.getElementById('apiKeyInput');
-            
-            const table = document.getElementById('excelTable');
-            const thead = document.getElementById('excelThead');
-            const tbody = document.getElementById('excelTbody');
-            const statusMessage = document.getElementById('statusMessage');
-            const statusText = document.getElementById('statusText');
+            const triggerHandwriteBtn = document.getElementById('triggerHandwriteBtn');
             
             const modal = document.getElementById('handwritingModal');
             const canvas = document.getElementById('drawingCanvas');
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             const clearBtn = document.getElementById('clearBtn');
-            const cancelBtn = document.getElementById('cancelBtn');
+            const closeModalIconBtn = document.getElementById('closeModalIconBtn');
             const recognizeBtn = document.getElementById('recognizeBtn');
             const recognizeBtnText = document.getElementById('recognizeBtnText');
             const recognizeSpinner = document.getElementById('recognizeSpinner');
-            const modalError = document.getElementById('modalError');
-
+            const targetCellInfo = document.getElementById('targetCellInfo');
+            
             // State
-            let activeCell = null;
+            let activeRow = null;
+            let activeCol = null;
             let isDrawing = false;
             let lastX = 0;
             let lastY = 0;
             let hasDrawn = false;
 
-            // --- Helper Functions ---
-            function setStatus(msg, type = 'info') {
-                statusText.textContent = msg;
-                statusMessage.className = `mb-4 p-4 rounded-lg flex items-center gap-3 border ${
-                    type === 'error' ? 'bg-red-50 text-red-800 border-red-200' :
-                    type === 'success' ? 'bg-green-50 text-green-800 border-green-200' :
-                    'bg-blue-50 text-blue-800 border-blue-200'
-                }`;
-            }
-
-            function setModalError(msg) {
-                if (msg) {
-                    modalError.textContent = msg;
-                    modalError.classList.remove('hidden');
+            // --- UI Helper: Custom Alert ---
+            function showAlert(msg, type = 'info') {
+                const alertBox = document.getElementById('custom-alert');
+                const alertText = document.getElementById('alert-text');
+                const alertIcon = document.getElementById('alert-icon');
+                
+                alertText.textContent = msg;
+                
+                if (type === 'error') {
+                    alertBox.className = 'fixed shadow-lg rounded-full px-6 py-3 font-medium text-white flex items-center gap-2 bg-red-600 top-20 left-1/2 -translate-x-1/2 z-[9999]';
+                    alertIcon.className = 'ph ph-warning text-xl';
+                } else if (type === 'success') {
+                    alertBox.className = 'fixed shadow-lg rounded-full px-6 py-3 font-medium text-white flex items-center gap-2 bg-green-600 top-20 left-1/2 -translate-x-1/2 z-[9999]';
+                    alertIcon.className = 'ph ph-check-circle text-xl';
                 } else {
-                    modalError.classList.add('hidden');
+                    alertBox.className = 'fixed shadow-lg rounded-full px-6 py-3 font-medium text-white flex items-center gap-2 bg-gray-800 top-20 left-1/2 -translate-x-1/2 z-[9999]';
+                    alertIcon.className = 'ph ph-info text-xl';
                 }
+
+                alertBox.classList.remove('hidden');
+                
+                // Hide after 3 seconds
+                setTimeout(() => {
+                    alertBox.classList.add('hidden');
+                }, 3000);
             }
 
-            // --- Excel Handling ---
+            // --- Initialize Luckysheet ---
+            function initLuckysheet(data = [{ name: "シート1" }]) {
+                luckysheet.create({
+                    container: 'luckysheet',
+                    lang: 'ja',
+                    showinfobar: false,
+                    showtoolbar: true,
+                    showsheetbar: true,
+                    data: data,
+                    hook: {
+                        // セルをダブルクリック(タップ)したときに手書きモーダルを起動
+                        cellMousedowndouble: function (cell, position) {
+                            openModal(position.r, position.c);
+                            return false; // デフォルトのテキスト入力をキャンセル
+                        }
+                    }
+                });
+            }
+            initLuckysheet();
+
+            // --- Load Excel File ---
             fileInput.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
 
-                setStatus("読み込み中...", "info");
-                const reader = new FileReader();
+                showAlert("Excelを読み込んでいます...", "info");
                 
-                reader.onload = (evt) => {
-                    try {
-                        const data = new Uint8Array(evt.target.result);
-                        const workbook = XLSX.read(data, { type: 'array' });
-                        const firstSheetName = workbook.SheetNames[0];
-                        const worksheet = workbook.Sheets[firstSheetName];
-                        
-                        // Convert to array of arrays
-                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
-                        renderTable(jsonData);
-                        
-                        exportBtn.disabled = false;
-                        table.classList.remove('hidden');
-                        setStatus(`「${file.name}」を読み込みました。セルをタップして入力してください。`, "success");
-                    } catch (error) {
-                        console.error(error);
-                        setStatus("Excelファイルの解析に失敗しました。", "error");
+                LuckyExcel.transformExcelToLucky(file, function(exportJson, luaApp){
+                    if(exportJson.sheets == null || exportJson.sheets.length == 0){
+                        showAlert("ファイルの読み込みに失敗しました", "error");
+                        return;
                     }
-                };
-                
-                reader.readAsArrayBuffer(file);
-                e.target.value = ''; // Reset input
-            });
-
-            function renderTable(data) {
-                thead.innerHTML = '';
-                tbody.innerHTML = '';
-                
-                if (data.length === 0) return;
-
-                // Header Row
-                const headerRow = data[0];
-                const trHead = document.createElement('tr');
-                headerRow.forEach(text => {
-                    const th = document.createElement('th');
-                    th.textContent = text;
-                    trHead.appendChild(th);
-                });
-                thead.appendChild(trHead);
-
-                // Data Rows
-                for (let i = 1; i < data.length; i++) {
-                    const tr = document.createElement('tr');
-                    const rowData = data[i];
+                    // 既存のシートを破棄して再描画
+                    luckysheet.destroy();
                     
-                    for (let j = 0; j < headerRow.length; j++) {
-                        const td = document.createElement('td');
-                        td.textContent = rowData[j] !== undefined ? rowData[j] : "";
-                        td.addEventListener('click', () => openModal(td));
-                        tr.appendChild(td);
-                    }
-                    tbody.appendChild(tr);
-                }
-            }
+                    luckysheet.create({
+                        container: 'luckysheet',
+                        showinfobar: false,
+                        lang: 'ja',
+                        data: exportJson.sheets,
+                        title: exportJson.info.name,
+                        userInfo: exportJson.info.name.creator,
+                        hook: {
+                            cellMousedowndouble: function (cell, position) {
+                                openModal(position.r, position.c);
+                                return false; 
+                            }
+                        }
+                    });
+                    showAlert("読み込みが完了しました", "success");
+                }, function(err){
+                    showAlert("パースエラーが発生しました", "error");
+                });
+                
+                e.target.value = ''; // Reset
+            });
 
-            exportBtn.addEventListener('click', () => {
+            // --- Export to Excel (using ExcelJS) ---
+            exportBtn.addEventListener('click', async () => {
+                showAlert("保存の準備をしています...", "info");
                 try {
-                    const wb = XLSX.utils.table_to_book(table, { sheet: "Sheet1" });
-                    XLSX.writeFile(wb, 'updated_data.xlsx');
-                    setStatus("ファイルを保存しました。", "success");
+                    const sheetsData = luckysheet.getAllSheets();
+                    const workbook = new ExcelJS.Workbook();
+
+                    sheetsData.forEach(sheet => {
+                        const ws = workbook.addWorksheet(sheet.name);
+                        
+                        // データと基本フォーマットの移行
+                        if (sheet.celldata) {
+                            sheet.celldata.forEach(cell => {
+                                const row = cell.r + 1;
+                                const col = cell.c + 1;
+                                const val = cell.v;
+                                if(val) {
+                                    const excelCell = ws.getCell(row, col);
+                                    // 表示用の値（手書きで入力したテキストなど）を優先
+                                    excelCell.value = (val.m !== undefined && val.m !== null) ? val.m : val.v;
+                                }
+                            });
+                        }
+
+                        // 結合セルの移行
+                        if (sheet.config && sheet.config.merge) {
+                            for (const key in sheet.config.merge) {
+                                const merge = sheet.config.merge[key];
+                                ws.mergeCells(merge.r + 1, merge.c + 1, merge.r + merge.rs, merge.c + merge.cs);
+                            }
+                        }
+                        
+                        // 列幅の簡単な移行
+                        if (sheet.config && sheet.config.columnlen) {
+                            for(const colIdx in sheet.config.columnlen) {
+                                ws.getColumn(parseInt(colIdx) + 1).width = sheet.config.columnlen[colIdx] / 7; 
+                            }
+                        }
+                    });
+
+                    const buffer = await workbook.xlsx.writeBuffer();
+                    saveAs(new Blob([buffer]), "手書き入力済_日報.xlsx");
+                    showAlert("ダウンロードを開始しました", "success");
+
                 } catch (error) {
-                    setStatus("ファイルの保存に失敗しました。", "error");
+                    console.error(error);
+                    showAlert("保存中にエラーが発生しました", "error");
                 }
             });
 
-            // --- Canvas & Modal Logic ---
-            function initCanvas() {
-                // Ensure canvas internal resolution matches display size for crisp lines
-                const rect = canvas.parentElement.getBoundingClientRect();
-                canvas.width = rect.width;
-                canvas.height = 300; // Fixed height defined in CSS
+            // --- Handwriting Canvas Modal Logic ---
+            function openModal(r = null, c = null) {
+                if (r === null || c === null) {
+                    // ボタン経由で呼ばれた場合は、現在選択中のセルを取得
+                    const range = luckysheet.getRange();
+                    if (!range || range.length === 0) {
+                        showAlert("手書き入力するセルを先にタップして選択してください。", "error");
+                        return;
+                    }
+                    activeRow = range[0].row[0];
+                    activeCol = range[0].column[0];
+                } else {
+                    activeRow = r;
+                    activeCol = c;
+                }
 
-                ctx.fillStyle = "#ffffff";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.lineWidth = 4;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                ctx.strokeStyle = '#000000';
-                hasDrawn = false;
-                setModalError("");
-            }
+                // セルの列名(A, B, C...)を計算
+                let colName = String.fromCharCode(65 + activeCol); 
+                if(activeCol > 25) { // 簡易的なAAなどの対応
+                    colName = String.fromCharCode(64 + Math.floor(activeCol/26)) + String.fromCharCode(65 + (activeCol%26));
+                }
+                targetCellInfo.textContent = `対象セル: ${colName}${activeRow + 1}`;
 
-            function openModal(cell) {
-                activeCell = cell;
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
                 
-                // Initialize canvas after modal is displayed so it gets correct dimensions
-                setTimeout(initCanvas, 10); 
+                // キャンバスの初期化遅延（モーダル表示後にサイズを合わせるため）
+                setTimeout(initCanvas, 10);
             }
+
+            triggerHandwriteBtn.addEventListener('click', () => openModal());
 
             function closeModal() {
                 modal.classList.add('hidden');
                 modal.classList.remove('flex');
-                activeCell = null;
+                activeRow = null;
+                activeCol = null;
                 setLoadingState(false);
+            }
+            closeModalIconBtn.addEventListener('click', closeModal);
+
+            function initCanvas() {
+                const rect = canvas.parentElement.getBoundingClientRect();
+                canvas.width = rect.width;
+                canvas.height = 300; 
+
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.lineWidth = 5;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.strokeStyle = '#1e293b';
+                hasDrawn = false;
             }
 
             function getCoordinates(e) {
@@ -344,7 +403,7 @@
 
             function draw(e) {
                 if (!isDrawing) return;
-                e.preventDefault(); // Prevent scrolling on iPad
+                e.preventDefault(); // iPadスクロール防止
                 
                 const pos = getCoordinates(e);
                 
@@ -363,49 +422,44 @@
                 isDrawing = false;
             }
 
-            // Mouse Events
+            // Mouse & Touch Events
             canvas.addEventListener('mousedown', startDrawing);
             canvas.addEventListener('mousemove', draw);
             canvas.addEventListener('mouseup', stopDrawing);
             canvas.addEventListener('mouseout', stopDrawing);
 
-            // Touch Events (iPad/Apple Pencil)
             canvas.addEventListener('touchstart', startDrawing, { passive: false });
             canvas.addEventListener('touchmove', draw, { passive: false });
             canvas.addEventListener('touchend', stopDrawing, { passive: false });
             canvas.addEventListener('touchcancel', stopDrawing, { passive: false });
 
             clearBtn.addEventListener('click', initCanvas);
-            cancelBtn.addEventListener('click', closeModal);
 
-            // --- Gemini API Logic ---
+            // --- Gemini API Call ---
             function setLoadingState(isLoading) {
                 if (isLoading) {
                     recognizeBtn.disabled = true;
-                    recognizeBtnText.textContent = "認識中...";
+                    recognizeBtnText.textContent = "AIで文字を認識中...";
                     recognizeSpinner.classList.remove('hidden');
-                    setModalError("");
                 } else {
                     recognizeBtn.disabled = false;
-                    recognizeBtnText.textContent = "認識する";
+                    recognizeBtnText.textContent = "テキストに変換・入力";
                     recognizeSpinner.classList.add('hidden');
                 }
             }
 
             recognizeBtn.addEventListener('click', async () => {
                 if (!hasDrawn) {
-                    setModalError("文字が書き込まれていません。");
+                    showAlert("文字が書き込まれていません", "error");
                     return;
                 }
 
                 setLoadingState(true);
                 
-                // Get API Key (Fallback to empty string if not provided so Canvas handles it)
-                const apiKey = apiKeyInput.value.trim();
-                const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+                // Use Gemini 3 Flash Preview as default for vision tasks
+                const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`;
 
                 try {
-                    // Convert canvas to base64 jpeg
                     const base64Data = canvas.toDataURL("image/jpeg").split(',')[1];
                     const promptText = "画像に書かれている手書きの文字をテキストに変換してください。日本語または英語のみ出力し、それ以外の説明や装飾は一切含めないでください。";
 
@@ -434,12 +488,12 @@
                     if (result.candidates && result.candidates.length > 0) {
                         const recognizedText = result.candidates[0].content.parts[0].text.trim();
                         
-                        if (activeCell) {
-                            activeCell.textContent = recognizedText;
-                            // Visual feedback on cell
-                            activeCell.classList.add('bg-green-100');
-                            setTimeout(() => activeCell.classList.remove('bg-green-100'), 1000);
+                        // Luckysheetのアクティブなセルに値を入力
+                        if (activeRow !== null && activeCol !== null) {
+                            luckysheet.setCellValue(activeRow, activeCol, recognizedText);
+                            showAlert("セルに入力しました", "success");
                         }
+                        
                         closeModal();
                     } else {
                         throw new Error("Invalid response format");
@@ -447,7 +501,7 @@
 
                 } catch (error) {
                     console.error("Gemini Recognition Error:", error);
-                    setModalError("認識に失敗しました。APIキーが正しいか、または通信環境を確認してください。");
+                    showAlert("認識に失敗しました。APIキーまたは通信環境を確認してください。", "error");
                 } finally {
                     setLoadingState(false);
                 }
